@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- saved from url=(0065)file:///C:/Users/yuki0/Downloads/reimu_app_4/reimu_app/index.html -->
-<html lang="ja"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Multi-Face Overlay - Multi-Character Selection</title>
 <style>
@@ -22,7 +22,6 @@
     .expr-badge { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.9); color: #222; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; transition: opacity 0.3s; z-index: 10; }
     .expr-badge.hidden, .status.hidden { opacity: 0; pointer-events: none; }
     
-    /* 画面クリックのヒントを上部に変更 */
     .stream-hint { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); color: #aaa; font-size: 11px; padding: 4px 10px; border-radius: 4px; z-index: 5; pointer-events: none; }
     .stream-hint.hidden { opacity: 0; pointer-events: none; }
 
@@ -32,7 +31,6 @@
     .naming-rule { background: rgba(0,0,0,0.4); border-left: 2px solid #4da6ff; padding: 4px 6px; margin-top: 6px; font-size: 10px; color: #ddd; }
     .naming-rule a { color: #66b3ff; text-decoration: underline; }
 
-    /* 画面右下のクレジット表記用スタイル */
     .credit-display {
         position: fixed;
         bottom: 15px;
@@ -50,9 +48,10 @@
         pointer-events: auto;
     }
 </style>
-<script src="./Multi-Face Overlay - Multi-Character Selection_files/camera_utils.js.ダウンロード" crossorigin="anonymous"></script>
-<script src="./Multi-Face Overlay - Multi-Character Selection_files/face_mesh.js.ダウンロード" crossorigin="anonymous"></script>
-<script src="./Multi-Face Overlay - Multi-Character Selection_files/jszip.min.js.ダウンロード" crossorigin="anonymous"></script>
+<!-- MediaPipe および JSZip のCDN読み込み -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="container">
@@ -62,7 +61,7 @@
     <div id="exprBadge" class="expr-badge hidden">stream-mode</div>
     <div id="streamHint" class="stream-hint hidden">画面クリックでパネル表示/非表示</div>
 
-    <!-- 右下のクレジット表記 -->
+    <!-- クレジット表記 -->
     <div class="credit-display">
         たぬき式ゆっくり: <a href="https://tanukiyukkuri.github.io/tanukitachie" target="_blank">https://tanukiyukkuri.github.io/tanukitachie</a>
     </div>
@@ -693,4 +692,5 @@ window.addEventListener('load', () => {
 });
 </script>
 
-</body></html>
+</body>
+</html>
