@@ -1,4 +1,3 @@
-## クレジット表記について
-当アプリ・素材を使用する際は、以下のクレジット表記を記載してください。
+
 
 * **たぬき式ゆっくり:** [https://tanukiyukkuri.github.io/tanukitachie](https://tanukiyukkuri.github.io/tanukitachie)
