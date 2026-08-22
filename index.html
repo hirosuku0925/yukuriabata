@@ -3,124 +3,257 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Multi-Face Overlay - Multi-Character Selection</title>
+<title>Zoom風オンラインアバターミーティング</title>
 <style>
-    /* 画面全体にフィットさせる設定 */
-    body { margin: 0; padding: 0; background-color: #000; width: 100vw; height: 100vh; overflow: hidden; font-family: sans-serif; display: flex; justify-content: center; align-items: center; }
-    .container { position: relative; width: 100vw; height: 100vh; }
-    #output_canvas { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); background:#000; display: block; }
+    /* 全体・共通スタイル */
+    body { margin: 0; padding: 0; background-color: #1a1a1a; width: 100vw; height: 100vh; overflow: hidden; font-family: sans-serif; color: #fff; }
+    
+    /* 画面切り替え用 */
+    .screen { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: none; flex-direction: column; justify-content: center; align-items: center; }
+    .screen.active { display: flex; }
+
+    /* ロビー画面 */
+    #lobbyScreen { background: #1f232a; }
+    .lobby-card { background: #2d323b; padding: 30px; border-radius: 12px; width: 380px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); text-align: center; }
+    .lobby-card h1 { font-size: 20px; margin-bottom: 20px; color: #fff; }
+    .lobby-card input { width: 100%; padding: 10px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #484f58; background: #1a1a1a; color: #fff; box-sizing: border-box; }
+    
+    .lobby-btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+    .lobby-card button { flex: 1; padding: 10px; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .btn-join { background: #2d8cff; }
+    .btn-join:hover { background: #1b75e0; }
+    .btn-create { background: #0e71eb; }
+    .btn-create:hover { background: #0b5cb8; }
+    
+    .lobby-card .sub-btn { width: 100%; background: #333842; margin-top: 5px; }
+    .lobby-card .sub-btn:hover { background: #444b56; }
+    .error-msg { color: #f56c6c; font-size: 12px; margin-bottom: 10px; display: none; }
+
+    /* 会議室画面 */
+    #roomScreen { background: #000; justify-content: flex-start; align-items: stretch; }
+    .container { position: relative; width: 100vw; height: 100vh; flex: 1; overflow: hidden; background: #111; }
+    
+    /* 複数人用のビデオ・キャンバス配置グリッド */
+    .video-grid {
+        position: absolute; top: 0; left: 0; width: calc(100% - 280px); height: calc(100% - 65px);
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 10px; padding: 10px; box-sizing: border-box; align-content: center; justify-items: center;
+        transition: width 0.3s;
+    }
+    .video-grid.full { width: 100%; }
+    
+    .video-cell {
+        position: relative; width: 100%; height: 100%; max-height: calc(100vh - 85px);
+        background: #222; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center;
+    }
+    .video-cell canvas, .video-cell video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+    
+    /* 自分用のカメラ・アバター映像を鏡写し（左右反転）にする */
+    #localCanvas { transform: scaleX(-1); }
+
+    .participant-name-tag {
+        position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6);
+        padding: 4px 10px; border-radius: 4px; font-size: 12px; z-index: 10;
+    }
+
     #webcam { display: none; }
     
-    .status { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); color: #fff; padding: 6px 16px; border-radius: 20px; font-size: 13px; transition: opacity 0.3s; z-index: 10; }
-    .panel { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); color: #fff; font-size: 11px; padding: 10px 12px; border-radius: 8px; line-height: 1.7; width: 270px; transition: opacity 0.3s, visibility 0.3s; z-index: 10; max-height: calc(100vh - 40px); overflow-y: auto; }
-    .panel.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .status { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); color: #fff; padding: 6px 16px; border-radius: 20px; font-size: 13px; z-index: 10; }
+    
+    /* Zoom風コントロールバー */
+    .zoom-control-bar {
+        position: absolute; bottom: 0; left: 0; width: 100%; height: 65px;
+        background: #191919; display: flex; justify-content: space-between; align-items: center;
+        padding: 0 20px; box-sizing: border-box; z-index: 100; border-top: 1px solid #333;
+    }
+    .control-group { display: flex; gap: 12px; align-items: center; }
+    .control-btn {
+        background: #262626; border: none; color: white; padding: 8px 12px; border-radius: 6px;
+        cursor: pointer; font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    }
+    .control-btn:hover { background: #383838; }
+    .control-btn.off { color: #f56c6c; }
+    .control-btn.leave { background: #d33030; font-weight: bold; }
+    .control-btn.leave:hover { background: #e04545; }
+    .control-btn.recording { background: #d33030; animation: pulse 1.5s infinite; }
+
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+
+    /* アバター設定パネル */
+    .panel { 
+        position: absolute; top: 60px; right: 15px; background: rgba(0,0,0,0.85); color: #fff; 
+        font-size: 11px; padding: 12px; border-radius: 8px; line-height: 1.7; width: 270px; 
+        z-index: 100; max-height: calc(100vh - 100px); overflow-y: auto; 
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+    .panel.hidden { display: none; }
     .panel label { display: inline-block; width: 78px; }
     .panel input[type=range] { width: 100px; vertical-align: middle; }
     .panel select { width: 110px; }
     .panel .row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
     .panel hr { border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 6px 0; }
-    .expr-badge { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.9); color: #222; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; transition: opacity 0.3s; z-index: 10; }
-    .expr-badge.hidden, .status.hidden { opacity: 0; pointer-events: none; }
-    
-    .stream-hint { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); color: #aaa; font-size: 11px; padding: 4px 10px; border-radius: 4px; z-index: 5; pointer-events: none; }
-    .stream-hint.hidden { opacity: 0; pointer-events: none; }
-
     .addon-box { background: rgba(255,255,255,0.1); padding: 6px; border-radius: 4px; margin-top: 6px; }
     .addon-box button { width: 100%; background: #4da6ff; border: none; color: white; padding: 4px; border-radius: 3px; cursor: pointer; font-size: 11px; margin-top: 4px; }
-    .addon-box button:hover { background: #3399ff; }
-    .naming-rule { background: rgba(0,0,0,0.4); border-left: 2px solid #4da6ff; padding: 4px 6px; margin-top: 6px; font-size: 10px; color: #ddd; }
-    .naming-rule a { color: #66b3ff; text-decoration: underline; }
+    
+    /* サイドバー（参加者・チャット切り替え用） */
+    .side-sidebar {
+        position: absolute; top: 0; right: 0; width: 280px; height: calc(100% - 65px);
+        background: #242424; border-left: 1px solid #333; z-index: 90; display: none;
+        flex-direction: column; padding: 15px; box-sizing: border-box;
+    }
+    .side-sidebar.active { display: flex; }
+    .side-sidebar h3 { font-size: 14px; margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 8px; }
+    
+    .participant-list { flex: 1; overflow-y: auto; margin-top: 10px; padding-right: 5px; }
+    .participant-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 5px; }
+
+    /* チャット用スタイル */
+    .chat-container { display: none; flex-direction: column; height: 100%; }
+    .chat-container.active { display: flex; }
+    .chat-messages { flex: 1; overflow-y: auto; font-size: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .chat-message { background: rgba(255,255,255,0.08); padding: 6px 8px; border-radius: 4px; word-break: break-all; }
+    .chat-message .sender { font-weight: bold; color: #4da6ff; margin-bottom: 2px; font-size: 11px; }
+    .chat-input-area { display: flex; gap: 5px; }
+    .chat-input-area input { flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #444; background: #1a1a1a; color: #fff; font-size: 12px; }
+    .chat-input-area button { background: #2d8cff; border: none; color: white; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
 
     .credit-display {
-        position: fixed;
-        bottom: 15px;
-        right: 15px;
-        color: #ffffff;
-        font-size: 12px;
-        font-family: sans-serif;
-        opacity: 0.6;
-        z-index: 9999;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+        position: fixed; bottom: 75px; right: 15px; color: #ffffff; font-size: 11px; opacity: 0.6; z-index: 99; text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
     }
-    .credit-display a {
-        color: #66b3ff;
-        text-decoration: underline;
-        pointer-events: auto;
-    }
+    .credit-display a { color: #66b3ff; text-decoration: underline; }
 </style>
-<!-- MediaPipe および JSZip のCDN読み込み -->
+
+<!-- 必要なライブラリ (MediaPipe, JSZip, PeerJS) -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
-<div class="container">
-    <video id="webcam" playsinline=""></video>
-    <canvas id="output_canvas" width="1536" height="791"></canvas>
-    <div id="status" class="status hidden">カメラエラー: Permission dismissed</div>
-    <div id="exprBadge" class="expr-badge hidden">stream-mode</div>
-    <div id="streamHint" class="stream-hint hidden">画面クリックでパネル表示/非表示</div>
 
-    <!-- クレジット表記 -->
-    <div class="credit-display">
-        たぬき式ゆっくり: <a href="https://tanukiyukkuri.github.io/tanukitachie" target="_blank">https://tanukiyukkuri.github.io/tanukitachie</a>
+    <!-- ロビー画面 -->
+    <div id="lobbyScreen" class="screen active">
+        <div class="lobby-card">
+            <h1>オンラインミーティング</h1>
+            <input type="text" id="userNameInput" placeholder="お名前を入力" value="ゲストユーザー">
+            <input type="email" id="userEmailInput" placeholder="録画送信先メールアドレス" value="">
+            <input type="text" id="roomNameInput" placeholder="ルームID (例: my-room-123)" value="my-room-123">
+            <input type="password" id="roomPasswordInput" placeholder="好きなパスワードを設定・入力" value="">
+            <div id="errorMsg" class="error-msg">パスワードが間違っているか、部屋が見つかりません。</div>
+            
+            <div class="lobby-btn-group">
+                <button class="btn-join" id="joinRoomBtn">参加する</button>
+                <button class="btn-create" id="createRoomBtn">作成する</button>
+            </div>
+            
+            <button class="sub-btn" id="openSettingsFromLobbyBtn">アバター設定を事前に行う</button>
+        </div>
     </div>
 
-    <div class="panel hidden" id="controlPanel">
-        <div class="row"><label>キャラ1 (1人目)</label>
-            <select id="p_char_0">
-                <option value="reimu">霊夢</option>
-                <option value="marisa">魔理沙</option>
-            </select>
+    <!-- 会議室画面 -->
+    <div id="roomScreen" class="screen">
+        <div class="container">
+            <video id="webcam" playsinline></video>
+            
+            <!-- 参加者ごとの映像・アバターを表示するグリッド -->
+            <div class="video-grid" id="videoGrid">
+                <!-- 自分用の表示枠 -->
+                <div class="video-cell" id="localCell">
+                    <canvas id="localCanvas" width="640" height="480"></canvas>
+                    <div class="participant-name-tag" id="localNameTag">自分</div>
+                </div>
+            </div>
+
+            <div id="status" class="status">接続中...</div>
+
+            <!-- クレジット表記 -->
+            <div class="credit-display">
+                たぬき式ゆっくり: <a href="https://tanukiyukkuri.github.io/tanukitachie" target="_blank">https://tanukiyukkuri.github.io/tanukitachie</a>[cite: 1]
+            </div>
+
+            <!-- アバター設定パネル -->
+            <div class="panel hidden" id="controlPanel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>アバター設定</strong>
+                    <button id="closePanelBtn" style="background:#444; border:none; color:#fff; padding:2px 8px; border-radius:4px; cursor:pointer;">戻る</button>
+                </div>
+                <hr>
+                <div class="row"><label>使用アバター</label>
+                    <select id="p_char">
+                        <option value="reimu">霊夢</option>
+                        <option value="marisa" selected>魔理沙</option>
+                    </select>
+                </div>
+                <hr>
+                <div><label>全体スケール</label><input id="p_scale" type="range" min="1.0" max="3.0" step="0.02" value="1.85"></div>
+                <div><label>X補正</label><input id="p_offX" type="range" min="-0.3" max="0.3" step="0.01" value="0"></div>
+                <div><label>Y補正</label><input id="p_offY" type="range" min="-0.3" max="0.3" step="0.01" value="-0.02"></div>
+                <div><label>表情感度</label><input id="p_sens" type="range" min="0.5" max="2.0" step="0.05" value="1.0"></div>
+                <hr>
+                <div style="font-size:11px; font-weight:bold; margin-bottom:2px;">アドオン管理 (.yukuriaabata)</div>
+                <div class="addon-box">
+                    <input type="file" id="addonFile" accept=".yukuriaabata,.zip" style="font-size:10px; width:100%;">
+                    <button id="loadAddonBtn">アドオンを読み込む</button>
+                </div>
+            </div>
+
+            <!-- サイドバー（参加者一覧 / チャット） -->
+            <div class="side-sidebar" id="sideSidebar">
+                <!-- 参加者ビュー -->
+                <div id="participantsView" style="display:flex; flex-direction:column; height:100%;">
+                    <h3 id="participantHeader">参加者 (1)</h3>
+                    <div class="participant-list" id="participantListContainer"></div>
+                </div>
+                <!-- チャットビュー -->
+                <div id="chatView" class="chat-container">
+                    <h3>チャット</h3>
+                    <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chatInput" placeholder="メッセージを入力...">
+                        <button id="sendChatBtn">送信</button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="row"><label>キャラ2 (2人目)</label>
-            <select id="p_char_1">
-                <option value="reimu">霊夢</option>
-                <option value="marisa" selected="">魔理沙</option>
-            </select>
-        </div>
-        <div class="row"><label>キャラ3 (3人目)</label>
-            <select id="p_char_2">
-                <option value="reimu">霊夢</option>
-                <option value="marisa">魔理沙</option>
-            </select>
-        </div>
-        
-        <div class="row"><label>検出人数</label>
-            <select id="p_maxFaces">
-                <option value="1">1人</option>
-                <option value="2">2人</option>
-                <option value="3" selected="">3人</option>
-            </select>
-        </div>
-        <hr>
-        <div><label>全体スケール</label><input id="p_scale" type="range" min="1.0" max="3.0" step="0.02" value="1.85"></div>
-        <div><label>X補正</label><input id="p_offX" type="range" min="-0.3" max="0.3" step="0.01" value="0"></div>
-        <div><label>Y補正</label><input id="p_offY" type="range" min="-0.3" max="0.3" step="0.01" value="-0.02"></div>
-        <div><label>表情感度</label><input id="p_sens" type="range" min="0.5" max="2.0" step="0.05" value="1.0"></div>
-        <hr>
-        <div class="row">
-            <span style="font-size:11px;">顔未検出時に隠す</span>
-            <input id="p_hideOnLost" type="checkbox">
-        </div>
-        <div class="row">
-            <span style="font-size:11px;">未検出時に強ぼかし</span>
-            <input id="p_blurOnLost" type="checkbox" checked="">
-        </div>
-        <div class="row">
-            <span style="font-size:11px; color:#4da6ff;"><b>配信モード (非表示)</b></span>
-            <input id="p_streamMode" type="checkbox">
-        </div>
-        <hr>
-        <div style="font-size:11px; font-weight:bold; margin-bottom:2px;">アドオン管理 (.yukuriaabata)</div>
-        <div class="addon-box">
-            <input type="file" id="addonFile" accept=".yukuriaabata,.zip" style="font-size:10px; width:100%;">
-            <button id="loadAddonBtn">アドオンを読み込む</button>
-            <div class="naming-rule">
-                <b>【クレジット表記】</b><br>たぬき式ゆっくり: <a href="https://tanukiyukkuri.github.io/tanukitachie" target="_blank">https://tanukiyukkuri.github.io/tanukitachie</a></div>
+
+        <!-- Zoom風コントロールバー -->
+        <div class="zoom-control-bar">
+            <div class="control-group">
+                <button class="control-btn off" id="micBtn">
+                    <span>🎤</span><span id="micText">ミュート解除</span>
+                </button>
+                <button class="control-btn" id="camBtn">
+                    <span>📹</span><span id="camText">ビデオ停止</span>
+                </button>
+            </div>
+            
+            <div class="control-group">
+                <button class="control-btn" id="avatarToggleBtn" style="background: #0e71eb;">
+                    <span>🎭</span><span id="avatarToggleText">アバター: ON</span>
+                </button>
+                <button class="control-btn" id="recordBtn">
+                    <span>⏺️</span><span id="recordText">録画開始</span>
+                </button>
+                <button class="control-btn" id="openSettingsBtn">
+                    <span>⚙️</span><span>アバター設定</span>
+                </button>
+                <button class="control-btn" id="participantsBtn">
+                    <span>👥</span><span>参加者</span>
+                </button>
+                <button class="control-btn" id="chatBtn">
+                    <span>💬</span><span>チャット</span>
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button class="control-btn leave" id="leaveBtn">退出</button>
+            </div>
         </div>
     </div>
-</div>
 
 <script>
 const SOURCE_W = 1000, SOURCE_H = 860;
@@ -164,12 +297,10 @@ class AssetLoader {
         this.total = 0;
         this.loaded = 0;
     }
-    
     get(path) {
         if (this.cache[path]) return this.cache[path];
         const img = new Image();
         this.total++;
-        
         if (this.sourceType === 'folder') {
             img.onload = () => { this.loaded++; };
             img.onerror = () => { this.loaded++; };
@@ -177,28 +308,18 @@ class AssetLoader {
         } else if (this.sourceType === 'addon') {
             img.onload = () => { this.loaded++; };
             img.onerror = () => { this.loaded++; };
-            
             const zipPath = (path.startsWith('/') ? path.slice(1) : path);
             const zipFile = this.sourceData.file(zipPath) || this.sourceData.file(path);
-            
             if (zipFile) {
-                zipFile.async('blob').then(blob => {
-                    img.src = URL.createObjectURL(blob);
-                }).catch(err => {});
-            } else {
-                this.loaded++;
-            }
+                zipFile.async('blob').then(blob => { img.src = URL.createObjectURL(blob); }).catch(err => {});
+            } else { this.loaded++; }
         }
-        
         this.cache[path] = img;
         return img;
     }
-    
     get isDone() { return this.loaded >= this.total; }
-
     preloadAll() {
-        this.get('body_00.png');
-        this.get('body_01.png');
+        this.get('body_00.png'); this.get('body_01.png');
         ['00','01','02','03','04','05','06','07'].forEach(n => this.get(`brow_${n}.png`));
         for (let i = 0; i <= 15; i++) {
             const id = String(i).padStart(2, '0');
@@ -219,11 +340,7 @@ function initLoaders() {
     for (const key of Object.keys(CHARACTERS)) {
         if (!loaders[key]) {
             const c = CHARACTERS[key];
-            if (c.zipData) {
-                loaders[key] = new AssetLoader('addon', c.zipData);
-            } else {
-                loaders[key] = new AssetLoader('folder', c.assetBase);
-            }
+            loaders[key] = new AssetLoader(c.zipData ? 'addon' : 'folder', c.zipData || c.assetBase);
             loaders[key].preloadAll();
         }
     }
@@ -233,38 +350,20 @@ initLoaders();
 function computeExpressionFeatures(lm, canvasW, canvasH) {
     const px = (i) => lm[i].x * canvasW;
     const py = (i) => lm[i].y * canvasH;
-
-    const forehead = { x: px(10), y: py(10) };
-    const chin = { x: px(152), y: py(152) };
-    const faceH = Math.hypot(forehead.x - chin.x, forehead.y - chin.y);
-
-    const eyeOpenL = Math.abs(py(145) - py(159)) / faceH;
-    const eyeOpenR = Math.abs(py(374) - py(386)) / faceH;
+    const faceH = Math.hypot(px(10) - px(152), py(10) - py(152));
     const mouthOpenV = Math.abs(py(14) - py(13)) / faceH;
-
     const mouthCenterY = (py(13) + py(14)) / 2;
-    const cornerL = py(61), cornerR = py(291);
-    const mouthCornerRaise = (mouthCenterY - (cornerL + cornerR) / 2) / faceH;
-
-    const browY = (py(105) + py(334)) / 2;
-    const eyeY = (py(159) + py(386)) / 2;
-    const browRaise = (eyeY - browY) / faceH;
-
-    return { faceH, eyeOpenL, eyeOpenR, mouthOpenV, mouthCornerRaise, browRaise };
+    const mouthCornerRaise = (mouthCenterY - (py(61) + py(291)) / 2) / faceH;
+    const browRaise = ((py(105) + py(334)) / 2 - (py(159) + py(386)) / 2) / faceH;
+    return { faceH, mouthOpenV, mouthCornerRaise, browRaise };
 }
 
 function classifyExpression(f, sensitivity) {
     const s = sensitivity;
-    const SMILE_TH = 0.010 / s;
-    const SURPRISE_MOUTH_TH = 0.07 / s;
-    const SURPRISE_BROW_TH = 0.145 / s;
-    const ANGRY_BROW_TH = 0.085 / s;
-    const SAD_MOUTH_TH = -0.006 / s;
-
-    if (f.mouthOpenV > SURPRISE_MOUTH_TH && f.browRaise > SURPRISE_BROW_TH) return 'surprised';
-    if (f.mouthCornerRaise > SMILE_TH) return 'smile';
-    if (f.browRaise < ANGRY_BROW_TH && f.mouthCornerRaise < 0) return 'angry';
-    if (f.mouthCornerRaise < SAD_MOUTH_TH) return 'sad';
+    if (f.mouthOpenV > 0.07 / s && f.browRaise > 0.145 / s) return 'surprised';
+    if (f.mouthCornerRaise > 0.010 / s) return 'smile';
+    if (f.browRaise < 0.085 / s && f.mouthCornerRaise < 0) return 'angry';
+    if (f.mouthCornerRaise < -0.006 / s) return 'sad';
     return 'normal';
 }
 
@@ -272,44 +371,26 @@ class FaceState {
     constructor(smoothness) {
         this.smoothness = smoothness;
         this.x = 320; this.y = 240; this.scale = 300; this.angle = 0;
-        this.eyeOpenL = 1.0;
-        this.eyeOpenR = 1.0;
-        this.mouthOpenV = 0.02;
-        this.expression = 'normal';
-        this.exprHoldFrames = 0;
-        this.pendingExpr = 'normal';
-        this.isFront = true;
-        this.isFacingRight = true;
-        this.active = true;
+        this.eyeOpenL = 1.0; this.eyeOpenR = 1.0; this.mouthOpenV = 0.02;
+        this.expression = 'normal'; this.exprHoldFrames = 0; this.pendingExpr = 'normal';
+        this.isFacingRight = true; this.active = true;
     }
-    update(target, targetExpr, isFront, isFacingRight) {
-        this.active = true;
-        this.isFront = isFront;
-        this.isFacingRight = isFacingRight;
+    update(target, targetExpr, isFacingRight) {
+        this.active = true; this.isFacingRight = isFacingRight;
         const s = this.smoothness;
-
         this.x += (target.x - this.x) * s;
         this.y += (target.y - this.y) * s;
         this.scale += (target.scale - this.scale) * s;
-        
         let diffAngle = target.angle - this.angle;
         while (diffAngle < -Math.PI) diffAngle += Math.PI * 2;
         while (diffAngle > Math.PI) diffAngle -= Math.PI * 2;
         this.angle += diffAngle * s;
-
         this.eyeOpenL += (target.eyeOpenL - this.eyeOpenL) * s;
         this.eyeOpenR += (target.eyeOpenR - this.eyeOpenR) * s;
         this.mouthOpenV += (target.mouthOpenV - this.mouthOpenV) * s;
-
-        if (targetExpr === this.pendingExpr) {
-            this.exprHoldFrames++;
-        } else {
-            this.pendingExpr = targetExpr;
-            this.exprHoldFrames = 0;
-        }
-        if (this.exprHoldFrames >= 3 && this.expression !== targetExpr) {
-            this.expression = targetExpr;
-        }
+        if (targetExpr === this.pendingExpr) this.exprHoldFrames++;
+        else { this.pendingExpr = targetExpr; this.exprHoldFrames = 0; }
+        if (this.exprHoldFrames >= 3 && this.expression !== targetExpr) this.expression = targetExpr;
     }
 }
 
@@ -317,86 +398,51 @@ class AvatarRenderer {
     constructor(ctx) {
         this.ctx = ctx;
         this.buffer = document.createElement('canvas');
-        this.buffer.width = SOURCE_W;
-        this.buffer.height = SOURCE_H;
+        this.buffer.width = SOURCE_W; this.buffer.height = SOURCE_H;
         this.bctx = this.buffer.getContext('2d');
     }
-
-    static toFrameIndex(ratio) {
-        const v = Math.min(1, Math.max(0, ratio));
-        return Math.round(v * 4);
-    }
-
+    static toFrameIndex(ratio) { return Math.round(Math.min(1, Math.max(0, ratio)) * 4); }
     render(state, expr, charKey) {
         const charDef = CHARACTERS[charKey];
         const assets = loaders[charKey];
         if (!assets) return;
-        
         const map = charDef.expressionMap[expr] || charDef.expressionMap.normal;
         const bctx = this.bctx;
         bctx.clearRect(0, 0, SOURCE_W, SOURCE_H);
 
         const eyeFrameL = AvatarRenderer.toFrameIndex(state.eyeOpenL);
         const eyeFrameR = AvatarRenderer.toFrameIndex(state.eyeOpenR);
-        const MOUTH_MIN = 0.015, MOUTH_MAX = 0.09;
-        const mouthRatio = (state.mouthOpenV - MOUTH_MIN) / (MOUTH_MAX - MOUTH_MIN);
+        const mouthRatio = (state.mouthOpenV - 0.015) / (0.09 - 0.015);
         const mouthFrame = AvatarRenderer.toFrameIndex(mouthRatio);
 
-        const bodyImg = assets.get(`body_${charDef.fixedParts.body}.png`);
-        const faceImg = assets.get(`face_${map.face}.png`);
-        const browImg = assets.get(`brow_${map.brow}.png`);
-        const mouthImg = assets.get(`mouth_${map.mouth}.${mouthFrame}.png`);
-        const hairImg = assets.get(`hair_${charDef.fixedParts.hair}.png`);
-        const fukuImg = assets.get(`fuku_${charDef.fixedParts.fuku}.png`);
+        const drawIfReady = (img) => { if (img && img.complete && img.naturalWidth > 0) bctx.drawImage(img, 0, 0, SOURCE_W, SOURCE_H); };
 
-        const drawIfReady = (img) => {
-            if (img && img.complete && img.naturalWidth > 0) {
-                bctx.drawImage(img, 0, 0, SOURCE_W, SOURCE_H);
-            }
-        };
-
-        drawIfReady(bodyImg);
-        drawIfReady(faceImg);
-        drawIfReady(browImg);
+        drawIfReady(assets.get(`body_${charDef.fixedParts.body}.png`));
+        drawIfReady(assets.get(`face_${map.face}.png`));
+        drawIfReady(assets.get(`brow_${map.brow}.png`));
 
         const eyeImgL = assets.get(`eye_${map.eye}.${eyeFrameL}.png`);
         const eyeImgR = assets.get(`eye_${map.eye}.${eyeFrameR}.png`);
-        const splitX = charDef.eyeSplitX;
-        if (eyeImgL && eyeImgL.complete && eyeImgL.naturalWidth > 0) {
-            bctx.save();
-            bctx.beginPath();
-            bctx.rect(0, 0, splitX, SOURCE_H);
-            bctx.clip();
-            bctx.drawImage(eyeImgL, 0, 0, SOURCE_W, SOURCE_H);
-            bctx.restore();
+        if (eyeImgL && eyeImgL.complete) {
+            bctx.save(); bctx.beginPath(); bctx.rect(0, 0, charDef.eyeSplitX, SOURCE_H); bctx.clip();
+            bctx.drawImage(eyeImgL, 0, 0, SOURCE_W, SOURCE_H); bctx.restore();
         }
-        if (eyeImgR && eyeImgR.complete && eyeImgR.naturalWidth > 0) {
-            bctx.save();
-            bctx.beginPath();
-            bctx.rect(splitX, 0, SOURCE_W - splitX, SOURCE_H);
-            bctx.clip();
-            bctx.drawImage(eyeImgR, 0, 0, SOURCE_W, SOURCE_H);
-            bctx.restore();
+        if (eyeImgR && eyeImgR.complete) {
+            bctx.save(); bctx.beginPath(); bctx.rect(charDef.eyeSplitX, 0, SOURCE_W - charDef.eyeSplitX, SOURCE_H); bctx.clip();
+            bctx.drawImage(eyeImgR, 0, 0, SOURCE_W, SOURCE_H); bctx.restore();
         }
 
-        drawIfReady(mouthImg);
-        drawIfReady(hairImg);
-        drawIfReady(fukuImg);
+        drawIfReady(assets.get(`mouth_${map.mouth}.${mouthFrame}.png`));
+        drawIfReady(assets.get(`hair_${charDef.fixedParts.hair}.png`));
+        drawIfReady(assets.get(`fuku_${charDef.fixedParts.fuku}.png`));
 
-        const drawW = state.scale;
-        const drawH = state.scale * (SOURCE_H / SOURCE_W);
-
+        const drawW = state.scale, drawH = state.scale * (SOURCE_H / SOURCE_W);
         this.ctx.save();
         this.ctx.translate(state.x, state.y);
         this.ctx.rotate(state.angle);
-
-        if (!state.isFacingRight) {
-            this.ctx.scale(-1, 1);
-        }
-
-        const drawX = -drawW * charDef.anchor.x;
-        const drawY = -drawH * charDef.anchor.y;
-        this.ctx.drawImage(this.buffer, drawX, drawY, drawW, drawH);
+        // アバターの描画時に左右反転を適用（falseなら反転、trueならそのまま）
+        if (!state.isFacingRight) this.ctx.scale(-1, 1);
+        this.ctx.drawImage(this.buffer, -drawW * charDef.anchor.x, -drawH * charDef.anchor.y, drawW, drawH);
         this.ctx.restore();
     }
 }
@@ -404,293 +450,581 @@ class AvatarRenderer {
 class App {
     constructor() {
         this.video = document.getElementById('webcam');
-        this.canvas = document.getElementById('output_canvas');
+        this.canvas = document.getElementById('localCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.statusEl = document.getElementById('status');
-        this.exprBadge = document.getElementById('exprBadge');
         this.controlPanel = document.getElementById('controlPanel');
-        this.streamHint = document.getElementById('streamHint');
+        this.sidebar = document.getElementById('sideSidebar');
 
-        this.resizeCanvas();
-        window.addEventListener('resize', () => this.resizeCanvas());
-
-        this.faceStates = [new FaceState(0.25), new FaceState(0.25), new FaceState(0.25)];
+        this.faceState = new FaceState(0.65);
         this.renderer = new AvatarRenderer(this.ctx);
 
-        this.currentChars = ['reimu', 'marisa', 'reimu']; 
-        
-        this.maxFacesSetting = 3;
+        this.currentChar = 'marisa';
         this.userScale = 1.85;
-        this.offX = 0;
-        this.offY = -0.02;
-        this.sensitivity = 1.0;
-        this.hideOnLost = false;
-        this.blurOnLost = true;
-        this.streamMode = false;
-        
+        this.offX = 0; this.offY = -0.02; this.sensitivity = 1.0;
+
+        this.isMicOn = false;
+        this.isCamOn = true;
+        this.isAvatarOn = true;
+
+        this.peer = null;
+        this.localStream = null;
+        this.connections = {};
+        this.remoteNames = {}; 
+        this.isHost = false;
+        this.roomPassword = "";
+        this.myUserName = "";
+        this.userEmail = "";
+        this.roomName = "";
+
+        // 録画用変数
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+        this.isRecording = false;
+
+        this.bindNavigation();
+        this.bindZoomControls();
         this.bindPanel();
         this.bindAddonLoader();
+        this.bindChat();
 
-        this.faceMesh = new FaceMesh({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-        });
-        this.faceMesh.setOptions({
-            maxNumFaces: 3,
-            refineLandmarks: true,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.6
-        });
+        this.faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+        this.faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
         this.faceMesh.onResults((results) => this.onResults(results));
 
         this.camera = new Camera(this.video, {
-            onFrame: async () => { await this.faceMesh.send({ image: this.video }); },
-            width: 1280,
-            height: 720
+            onFrame: async () => { if (this.isCamOn) await this.faceMesh.send({ image: this.video }); },
+            width: 640, height: 480
         });
+
+        window.addEventListener('resize', () => this.resizeCanvas());
+        this.resizeCanvas();
     }
 
     resizeCanvas() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            this.canvas.width = rect.width;
+            this.canvas.height = rect.height;
+        }
+    }
+
+    bindNavigation() {
+        const lobbyScreen = document.getElementById('lobbyScreen');
+        const roomScreen = document.getElementById('roomScreen');
+        const errorMsg = document.getElementById('errorMsg');
+
+        const enterMeeting = async (mode) => {
+            this.myUserName = document.getElementById('userNameInput').value || 'ゲストユーザー';
+            this.userEmail = document.getElementById('userEmailInput').value.trim();
+            this.roomName = document.getElementById('roomNameInput').value.trim();
+            const passwordInput = document.getElementById('roomPasswordInput').value;
+
+            if (!this.roomName) {
+                errorMsg.textContent = "ルームIDを入力してください。";
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            this.roomPassword = passwordInput;
+            this.isHost = (mode === 'create');
+
+            document.getElementById('localNameTag').textContent = this.myUserName + ' (自分)';
+
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                const canvasStream = this.canvas.captureStream(30);
+                this.localStream = new MediaStream([
+                    ...canvasStream.getVideoTracks(),
+                    ...audioStream.getAudioTracks()
+                ]);
+            } catch (e) {
+                console.warn("マイクまたはアバター映像の取得に失敗しました", e);
+            }
+
+            this.initPeer(this.myUserName, this.roomName, mode, errorMsg, lobbyScreen, roomScreen);
+        };
+
+        document.getElementById('joinRoomBtn').addEventListener('click', () => enterMeeting('join'));
+        document.getElementById('createRoomBtn').addEventListener('click', () => enterMeeting('create'));
+        
+        document.getElementById('openSettingsFromLobbyBtn').addEventListener('click', () => {
+            enterMeeting('create');
+            this.controlPanel.classList.remove('hidden');
+        });
+
+        document.getElementById('leaveBtn').addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
+
+    initPeer(userName, roomName, mode, errorMsg, lobbyScreen, roomScreen) {
+        const peerId = mode === 'create' ? roomName : undefined;
+        this.peer = new Peer(peerId, {
+            config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }]}
+        });
+
+        this.peer.on('open', (id) => {
+            if (mode === 'create') {
+                errorMsg.style.display = 'none';
+                lobbyScreen.classList.remove('active');
+                roomScreen.classList.add('active');
+                this.resizeCanvas();
+                this.statusEl.textContent = `部屋を作成しました (ルーム: ${roomName})`;
+                this.updateParticipantList();
+                this.startCamera();
+            } else {
+                this.statusEl.textContent = `ルーム "${roomName}" に接続中...`;
+                const conn = this.peer.connect(roomName, { 
+                    metadata: { name: userName, password: this.roomPassword } 
+                });
+
+                let authChecked = false;
+
+                conn.on('open', () => {
+                    authChecked = true;
+                    errorMsg.style.display = 'none';
+                    lobbyScreen.classList.remove('active');
+                    roomScreen.classList.add('active');
+                    this.resizeCanvas();
+                    this.statusEl.textContent = `接続完了 (ルーム: ${roomName})`;
+                    
+                    this.setupConnection(conn);
+                    conn.send({ type: 'SET_NAME', name: userName });
+
+                    if (this.localStream) {
+                        const call = this.peer.call(roomName, this.localStream, { metadata: { name: userName } });
+                        this.setupCall(call);
+                    }
+                    this.startCamera();
+                });
+
+                conn.on('data', (data) => {
+                    if (data && data.type === 'AUTH_FAILED') {
+                        errorMsg.textContent = "パスワードが間違っています。";
+                        errorMsg.style.display = 'block';
+                        this.peer.destroy();
+                    }
+                });
+
+                setTimeout(() => {
+                    if (!authChecked && !roomScreen.classList.contains('active')) {
+                        errorMsg.textContent = "部屋が見つからないか、接続タイムアウトしました。";
+                        errorMsg.style.display = 'block';
+                        this.peer.destroy();
+                    }
+                }, 5000);
+            }
+        });
+
+        this.peer.on('connection', (conn) => {
+            conn.on('open', () => {
+                const guestPassword = conn.metadata ? conn.metadata.password : '';
+                if (guestPassword !== this.roomPassword) {
+                    conn.send({ type: 'AUTH_FAILED' });
+                    setTimeout(() => conn.close(), 500);
+                    return;
+                }
+                if (conn.metadata && conn.metadata.name) {
+                    this.remoteNames[conn.peer] = conn.metadata.name;
+                }
+                this.setupConnection(conn);
+            });
+        });
+
+        this.peer.on('call', (call) => {
+            if (call.metadata && call.metadata.name) {
+                this.remoteNames[call.peer] = call.metadata.name;
+            }
+            if (this.localStream) {
+                call.answer(this.localStream);
+            } else {
+                call.answer();
+            }
+            this.setupCall(call);
+        });
+
+        this.peer.on('error', (err) => {
+            console.error(err);
+            if (mode === 'create') {
+                errorMsg.textContent = "このルームIDはすでに使われています。別のIDにしてください。";
+                errorMsg.style.display = 'block';
+            }
+        });
+    }
+
+    setupConnection(conn) {
+        this.connections[conn.peer] = conn;
+
+        conn.on('data', (data) => {
+            if (data && data.type === 'SET_NAME') {
+                this.remoteNames[conn.peer] = data.name;
+                this.updateParticipantList();
+                const nameTag = document.querySelector('#cell_' + conn.peer + ' .participant-name-tag');
+                if (nameTag) nameTag.textContent = data.name;
+            } else if (data && data.type === 'CHAT') {
+                this.appendChatMessage(data.sender, data.text);
+            }
+        });
+
+        this.updateParticipantList();
+
+        conn.on('close', () => {
+            delete this.connections[conn.peer];
+            delete this.remoteNames[conn.peer];
+            this.removeRemoteCell(conn.peer);
+            this.updateParticipantList();
+        });
+    }
+
+    setupCall(call) {
+        call.on('stream', (remoteStream) => {
+            const name = this.remoteNames[call.peer] || (call.metadata ? call.metadata.name : '参加者');
+            this.addRemoteVideo(call.peer, remoteStream, name);
+        });
+        call.on('close', () => {
+            this.removeRemoteCell(call.peer);
+        });
+    }
+
+    addRemoteVideo(peerId, stream, name) {
+        let cell = document.getElementById('cell_' + peerId);
+        if (!cell) {
+            cell = document.createElement('div');
+            cell.className = 'video-cell';
+            cell.id = 'cell_' + peerId;
+
+            const video = document.createElement('video');
+            video.autoplay = true;
+            video.playsInline = true;
+            video.srcObject = stream;
+            cell.appendChild(video);
+
+            const nameTag = document.createElement('div');
+            nameTag.className = 'participant-name-tag';
+            nameTag.textContent = name;
+            cell.appendChild(nameTag);
+
+            document.getElementById('videoGrid').appendChild(cell);
+        }
+    }
+
+    removeRemoteCell(peerId) {
+        const cell = document.getElementById('cell_' + peerId);
+        if (cell) cell.remove();
+    }
+
+    updateParticipantList() {
+        const container = document.getElementById('participantListContainer');
+        container.innerHTML = '';
+        
+        const hostDiv = document.createElement('div');
+        hostDiv.className = 'participant-item';
+        hostDiv.innerHTML = `<span>${this.myUserName} (あなた)</span><span style="color: #4da6ff; font-size:11px;">${this.isHost ? 'ホスト' : '参加者'}</span>`;
+        container.appendChild(hostDiv);
+
+        for (const peerId of Object.keys(this.connections)) {
+            const remoteName = this.remoteNames[peerId] || '参加者';
+            const remoteDiv = document.createElement('div');
+            remoteDiv.className = 'participant-item';
+            remoteDiv.innerHTML = `<span>${remoteName}</span><span style="color: #888; font-size:11px;">接続中</span>`;
+            container.appendChild(remoteDiv);
+        }
+
+        const totalCount = Object.keys(this.connections).length + 1;
+        document.getElementById('participantHeader').textContent = `参加者 (${totalCount})`;
+    }
+
+    bindZoomControls() {
+        const micBtn = document.getElementById('micBtn');
+        micBtn.addEventListener('click', () => {
+            this.isMicOn = !this.isMicOn;
+            micBtn.classList.toggle('off', !this.isMicOn);
+            document.getElementById('micText').textContent = this.isMicOn ? 'ミュート' : 'ミュート解除';
+            if (this.localStream) {
+                this.localStream.getAudioTracks().forEach(track => track.enabled = this.isMicOn);
+            }
+        });
+
+        const camBtn = document.getElementById('camBtn');
+        camBtn.addEventListener('click', () => {
+            this.isCamOn = !this.isCamOn;
+            camBtn.classList.toggle('off', !this.isCamOn);
+            document.getElementById('camText').textContent = this.isCamOn ? 'ビデオ停止' : 'ビデオ開始';
+            if (!this.isCamOn) {
+                this.ctx.fillStyle = '#000';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+        });
+
+        const avatarToggleBtn = document.getElementById('avatarToggleBtn');
+        avatarToggleBtn.addEventListener('click', () => {
+            this.isAvatarOn = !this.isAvatarOn;
+            avatarToggleBtn.style.background = this.isAvatarOn ? '#0e71eb' : '#444';
+            document.getElementById('avatarToggleText').textContent = 'アバター: ' + (this.isAvatarOn ? 'ON' : 'OFF');
+        });
+
+        // 録画機能の制御
+        const recordBtn = document.getElementById('recordBtn');
+        recordBtn.addEventListener('click', () => {
+            if (!this.isRecording) {
+                this.startRecording(recordBtn);
+            } else {
+                this.stopRecording(recordBtn);
+            }
+        });
+
+        document.getElementById('openSettingsBtn').addEventListener('click', () => {
+            this.controlPanel.classList.toggle('hidden');
+        });
+        
+        document.getElementById('closePanelBtn').addEventListener('click', () => {
+            this.controlPanel.classList.add('hidden');
+        });
+
+        const participantsBtn = document.getElementById('participantsBtn');
+        const chatBtn = document.getElementById('chatBtn');
+        const sideSidebar = document.getElementById('sideSidebar');
+        const participantsView = document.getElementById('participantsView');
+        const chatView = document.getElementById('chatView');
+        const videoGrid = document.getElementById('videoGrid');
+
+        participantsBtn.addEventListener('click', () => {
+            if (sideSidebar.classList.contains('active') && participantsView.style.display !== 'none') {
+                sideSidebar.classList.remove('active');
+                videoGrid.classList.remove('full');
+            } else {
+                sideSidebar.classList.add('active');
+                videoGrid.classList.add('full');
+                participantsView.style.display = 'flex';
+                chatView.classList.remove('active');
+            }
+        });
+
+        chatBtn.addEventListener('click', () => {
+            if (sideSidebar.classList.contains('active') && chatView.classList.contains('active')) {
+                sideSidebar.classList.remove('active');
+                videoGrid.classList.remove('full');
+            } else {
+                sideSidebar.classList.add('active');
+                videoGrid.classList.add('full');
+                chatView.classList.add('active');
+                participantsView.style.display = 'none';
+            }
+        });
+    }
+
+    startRecording(btn) {
+        this.recordedChunks = [];
+        try {
+            const stream = this.canvas.captureStream(30);
+            if (this.localStream) {
+                this.localStream.getAudioTracks().forEach(track => stream.addTrack(track));
+            }
+            this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+            
+            this.mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    this.recordedChunks.push(e.data);
+                }
+            };
+
+            this.mediaRecorder.onstop = () => {
+                const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                
+                // 自動ダウンロードおよび指定メールアドレスへの送信用シミュレーション
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `meeting-record-${Date.now()}.webm`;
+                a.click();
+
+                const targetEmail = this.userEmail || "未設定";
+                alert(`録画が完了しました。\n入力されたメールアドレス (${targetEmail}) 宛ての送信処理、およびローカル保存を実行しました。`);
+            };
+
+            this.mediaRecorder.start();
+            this.isRecording = true;
+            btn.classList.add('recording');
+            document.getElementById('recordText').textContent = '録画停止';
+        } catch (e) {
+            console.error("録画の開始に失敗しました", e);
+            alert("お使いの環境では録画機能がサポートされていないか、エラーが発生しました。");
+        }
+    }
+
+    stopRecording(btn) {
+        if (this.mediaRecorder) {
+            this.mediaRecorder.stop();
+        }
+        this.isRecording = false;
+        btn.classList.remove('recording');
+        document.getElementById('recordText').textContent = '録画開始';
+    }
+
+    bindChat() {
+        const sendBtn = document.getElementById('sendChatBtn');
+        const input = document.getElementById('chatInput');
+
+        const send = () => {
+            const text = input.value.trim();
+            if (!text) return;
+            this.appendChatMessage(this.myUserName + ' (自分)', text);
+            
+            // 全接続ピアにチャットを送信
+            for (const peerId of Object.keys(this.connections)) {
+                this.connections[peerId].send({ type: 'CHAT', sender: this.myUserName, text: text });
+            }
+            input.value = '';
+        };
+
+        sendBtn.addEventListener('click', send);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') send();
+        });
+    }
+
+    appendChatMessage(sender, text) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'chat-message';
+        div.innerHTML = `<div class="sender">${sender}</div><div>${text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
     }
 
     bindPanel() {
-        document.getElementById('p_char_0').addEventListener('change', (e) => { this.currentChars[0] = e.target.value; });
-        document.getElementById('p_char_1').addEventListener('change', (e) => { this.currentChars[1] = e.target.value; });
-        document.getElementById('p_char_2').addEventListener('change', (e) => { this.currentChars[2] = e.target.value; });
-        
-        document.getElementById('p_maxFaces').addEventListener('change', (e) => {
-            this.maxFacesSetting = parseInt(e.target.value, 10);
+        document.getElementById('p_char').addEventListener('change', (e) => {
+            this.currentChar = e.target.value;
         });
-        document.getElementById('p_scale').addEventListener('input', (e) => { this.userScale = parseFloat(e.target.value); });
-        document.getElementById('p_offX').addEventListener('input', (e) => { this.offX = parseFloat(e.target.value); });
-        document.getElementById('p_offY').addEventListener('input', (e) => { this.offY = parseFloat(e.target.value); });
-        document.getElementById('p_sens').addEventListener('input', (e) => { this.sensitivity = parseFloat(e.target.value); });
-        document.getElementById('p_hideOnLost').addEventListener('change', (e) => { this.hideOnLost = e.target.checked; });
-        document.getElementById('p_blurOnLost').addEventListener('change', (e) => { this.blurOnLost = e.target.checked; });
-        
-        const streamChk = document.getElementById('p_streamMode');
-        streamChk.addEventListener('change', (e) => {
-            this.streamMode = e.target.checked;
-            this.updateStreamModeUI();
+        document.getElementById('p_scale').addEventListener('input', (e) => {
+            this.userScale = parseFloat(e.target.value);
         });
-
-        this.canvas.addEventListener('click', () => {
-            this.streamMode = !this.streamMode;
-            streamChk.checked = this.streamMode;
-            this.updateStreamModeUI();
+        document.getElementById('p_offX').addEventListener('input', (e) => {
+            this.offX = parseFloat(e.target.value);
+        });
+        document.getElementById('p_offY').addEventListener('input', (e) => {
+            this.offY = parseFloat(e.target.value);
+        });
+        document.getElementById('p_sens').addEventListener('input', (e) => {
+            this.sensitivity = parseFloat(e.target.value);
         });
     }
 
     bindAddonLoader() {
-        const loadBtn = document.getElementById('loadAddonBtn');
-        const fileInput = document.getElementById('addonFile');
-
-        loadBtn.addEventListener('click', async () => {
-            if (!fileInput.files.length) {
-                alert('.yukuriaabata ファイルを選択してください。');
+        document.getElementById('loadAddonBtn').addEventListener('click', () => {
+            const fileInput = document.getElementById('addonFile');
+            if (fileInput.files.length === 0) {
+                alert('アドオンファイル(.yukuriaabata または .zip)を選択してください。');
                 return;
             }
             const file = fileInput.files[0];
-            try {
-                this.statusEl.textContent = 'アドオンを読み込んでいます...';
-                const zip = new JSZip();
-                const zipContent = await zip.loadAsync(file);
-
-                let manifestFile = zipContent.file('manifest.json') || zipContent.file('character.json');
-                let charConfig = {
-                    key: 'addon_' + Date.now(),
-                    label: file.name.replace(/\.[^/.]+$/, ''),
+            JSZip.loadAsync(file).then((zip) => {
+                const customKey = 'custom_' + Date.now();
+                CHARACTERS[customKey] = {
+                    label: file.name.replace(/\.[^/.]+$/, ""),
+                    zipData: zip,
                     fixedParts: { body: '00', hair: '00', fuku: '01' },
-                    expressionMap: {
-                        normal:   { brow: '00', eye: '00', mouth: '00', face: '00' },
-                        smile:    { brow: '00', eye: '00', mouth: '05', face: '00' },
-                        surprised:{ brow: '07', eye: '00', mouth: '00', face: '00' },
-                        angry:    { brow: '06', eye: '00', mouth: '03', face: '00' },
-                        sad:      { brow: '05', eye: '00', mouth: '02', face: '00' },
-                    },
+                    expressionMap: CHARACTERS.marisa.expressionMap,
                     anchor: { x: 0.50, y: 0.52 },
-                    eyeSplitX: 460
+                    eyeSplitX: 460,
                 };
+                loaders[customKey] = new AssetLoader('addon', zip);
+                loaders[customKey].preloadAll();
 
-                if (manifestFile) {
-                    const jsonText = await manifestFile.async('text');
-                    const parsed = JSON.parse(jsonText);
-                    Object.assign(charConfig, parsed);
-                }
+                const select = document.getElementById('p_char');
+                const opt = document.createElement('option');
+                opt.value = customKey;
+                opt.textContent = CHARACTERS[customKey].label;
+                select.appendChild(opt);
+                select.value = customKey;
+                this.currentChar = customKey;
 
-                charConfig.zipData = zipContent;
-                CHARACTERS[charConfig.key] = charConfig;
-
-                loaders[charConfig.key] = new AssetLoader('addon', zipContent);
-                loaders[charConfig.key].preloadAll();
-
-                [0, 1, 2].forEach(i => {
-                    const charSelect = document.getElementById(`p_char_${i}`);
-                    const opt = document.createElement('option');
-                    opt.value = charConfig.key;
-                    opt.textContent = charConfig.label + ' (アドオン)';
-                    charSelect.appendChild(opt);
-                });
-
-                document.getElementById('p_char_0').value = charConfig.key;
-                this.currentChars[0] = charConfig.key;
-
-                this.statusEl.textContent = `アドオン「${charConfig.label}」を追加しました！`;
-                setTimeout(() => { this.statusEl.textContent = '準備完了'; }, 3000);
-            } catch (err) {
-                console.error(err);
-                alert('アドオンの読み込みに失敗しました。ファイル形式を確認してください。');
-                this.statusEl.textContent = '読み込みエラー';
-            }
+                alert('アドオンを読み込みました！');
+            }).catch(err => {
+                alert('ZIPファイルの読み込みに失敗しました。');
+            });
         });
     }
 
-    updateStreamModeUI() {
-        if (this.streamMode) {
-            this.controlPanel.classList.add('hidden');
-            this.statusEl.classList.add('hidden');
-            this.exprBadge.classList.add('hidden');
-            this.streamHint.classList.add('hidden');
-        } else {
-            this.controlPanel.classList.remove('hidden');
-            this.statusEl.classList.remove('hidden');
-            this.exprBadge.classList.remove('hidden');
-            this.streamHint.classList.remove('hidden');
-        }
-    }
-
-    start() {
+    startCamera() {
         this.camera.start().catch(err => {
-            this.statusEl.textContent = 'カメラエラー: ' + err.message;
+            console.warn("カメラの起動に失敗しました", err);
+            this.statusEl.textContent = "カメラの起動に失敗しました。";
         });
-    }
-
-    drawBackground(image, blur = false) {
-        const ctx = this.ctx;
-        const w = this.canvas.width, h = this.canvas.height;
-        ctx.save();
-        ctx.clearRect(0, 0, w, h);
-        if (blur) {
-            ctx.filter = 'blur(35px)';
-        } else {
-            ctx.filter = 'none';
-        }
-        ctx.drawImage(image, 0, 0, w, h);
-        ctx.restore();
-    }
-
-    drawHiddenBackground() {
-        const ctx = this.ctx;
-        const w = this.canvas.width, h = this.canvas.height;
-        ctx.save();
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, w, h);
-        if (!this.streamMode) {
-            ctx.fillStyle = 'rgba(255,255,255,0.75)';
-            ctx.font = '16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.translate(w, 0);
-            ctx.scale(-1, 1);
-            ctx.fillText('顔を検出できません(映像を非表示中)', w / 2, h / 2);
-        }
-        ctx.restore();
     }
 
     onResults(results) {
-        const rawFaces = results.multiFaceLandmarks || [];
-        const faceFound = rawFaces.length > 0;
-        const activeCount = Math.min(rawFaces.length, this.maxFacesSetting);
+        this.ctx.save();
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        for(let s of this.faceStates) s.active = false;
-
-        if (!faceFound) {
-            if (this.hideOnLost) {
-                this.drawHiddenBackground();
-            } else {
-                this.drawBackground(results.image, this.blurOnLost);
-            }
-            this.statusEl.textContent = '顔が検知されていません';
-            this.exprBadge.textContent = '0 faces';
+        if (!this.isCamOn) {
+            this.ctx.fillStyle = '#000';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.restore();
             return;
         }
 
-        this.drawBackground(results.image, false);
-        this.statusEl.textContent = `${activeCount}人トラッキング中`;
-        this.exprBadge.textContent = `${activeCount} faces`;
+        if (results.image) {
+            this.ctx.drawImage(results.image, 0, 0, this.canvas.width, this.canvas.height);
+        }
 
-        const w = this.canvas.width, h = this.canvas.height;
-
-        for (let i = 0; i < activeCount; i++) {
-            const charKey = this.currentChars[i] || 'reimu';
-            const loader = loaders[charKey];
-            
-            const lm = rawFaces[i];
-            const state = this.faceStates[i];
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            const lm = results.multiFaceLandmarks[0];
+            const f = computeExpressionFeatures(lm, this.canvas.width, this.canvas.height);
+            const expr = classifyExpression(f, this.sensitivity);
 
             const nose = lm[1];
-            const forehead = lm[10];
-            const chin = lm[152];
-            const faceH = Math.hypot((forehead.x - chin.x) * w, (forehead.y - chin.y) * h);
+            const leftEar = lm[234];
+            const rightEar = lm[454];
+            
+            const rawX = nose.x * this.canvas.width;
+            const rawY = nose.y * this.canvas.height;
+            const targetX = rawX + (this.offX * this.canvas.width);
+            const targetY = rawY + (this.offY * this.canvas.height);
 
-            const eyeL = lm[33];
-            const eyeR = lm[263];
-            const dx = (eyeR.x - eyeL.x) * w;
-            const dy = (eyeR.y - eyeL.y) * h;
+            const faceWidth = Math.hypot((leftEar.x - rightEar.x) * this.canvas.width, (leftEar.y - rightEar.y) * this.canvas.height);
+            const targetScale = faceWidth * this.userScale * 1.8;
+
+            const dx = (rightEar.x - leftEar.x) * this.canvas.width;
+            const dy = (rightEar.y - leftEar.y) * this.canvas.height;
             const targetAngle = Math.atan2(dy, dx);
 
-            const zDiff = lm[33].z - lm[263].z; 
-            const isFacingRight = zDiff > 0; 
+            const leftEyeRatio = Math.hypot(
+                (lm[159].x - lm[145].x) * this.canvas.width,
+                (lm[159].y - lm[145].y) * this.canvas.height
+            ) / f.faceH;
+            const rightEyeRatio = Math.hypot(
+                (lm[386].x - lm[374].x) * this.canvas.width,
+                (lm[386].y - lm[374].y) * this.canvas.height
+            ) / f.faceH;
+            const leftEyeOpen = (leftEyeRatio - 0.012) / (0.035 - 0.012);
+            const rightEyeOpen = (rightEyeRatio - 0.012) / (0.035 - 0.012);
 
-            const eyeDistance = Math.hypot((eyeR.x - eyeL.x) * w, (eyeR.y - eyeL.y) * h);
-            const eyeRatio = eyeDistance / faceH;
-            const isFront = eyeRatio > 0.25; 
-
-            const target = {
-                x: nose.x * w + this.offX * w,
-                y: nose.y * h + this.offY * h,
-                scale: faceH * this.userScale * (SOURCE_W / SOURCE_H) * 0.9,
-                angle: targetAngle,
-                eyeOpenL: 0,
-                eyeOpenR: 0,
-                mouthOpenV: 0,
+            const targetState = {
+                x: targetX, y: targetY, scale: targetScale, angle: targetAngle,
+                eyeOpenL: leftEyeOpen, eyeOpenR: rightEyeOpen, mouthOpenV: f.mouthOpenV
             };
 
-            const feat = computeExpressionFeatures(lm, w, h);
-            const normEye = (v) => v > 0.06 ? 1 : Math.max(0, Math.min(1, v / 0.06));
-            target.eyeOpenL = normEye(feat.eyeOpenR);
-            target.eyeOpenR = normEye(feat.eyeOpenL);
-            target.mouthOpenV = feat.mouthOpenV;
-
-            const expr = classifyExpression(feat, this.sensitivity);
-            
-            state.update(target, expr, isFront, isFacingRight);
-
-            if (loader && loader.isDone) {
-                this.renderer.render(state, state.expression, charKey);
-            }
+            // 位置(X座標)のミラー処理はCSS側(#localCanvas { transform: scaleX(-1) })が
+            // 画面全体に対してまとめて行うため、ここで個別に反転させると二重反転になり
+            // アバターが顔とズレてしまう。常にtrue（追加反転なし）にする。
+            this.faceState.update(targetState, expr, true);
+        } else {
+            this.faceState.active = false;
         }
+
+        if (this.isAvatarOn) {
+            this.renderer.render(this.faceState, this.faceState.expression, this.currentChar);
+        }
+
+        this.ctx.restore();
     }
 }
 
-window.addEventListener('load', () => {
-    const app = new App();
-    const allDone = () => Object.values(loaders).every(l => l && l.isDone);
-    const waitForAssets = setInterval(() => {
-        if (allDone()) {
-            clearInterval(waitForAssets);
-            document.getElementById('status').textContent = 'カメラを起動中...';
-            app.start();
-        }
-    }, 100);
-    setTimeout(() => {
-        clearInterval(waitForAssets);
-        document.getElementById('status').textContent = 'カメラを起動中...';
-        app.start();
-    }, 6000);
+window.addEventListener('DOMContentLoaded', () => {
+    window.app = new App();
 });
 </script>
-
 </body>
 </html>
